@@ -1,0 +1,1 @@
+#Writes maze into output file (configurable in config)
