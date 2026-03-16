@@ -1,0 +1,1 @@
+#Calculate solution for the maze
