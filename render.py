@@ -40,22 +40,22 @@ DIR_DELTA: dict[str, tuple[int, int]] = {
 # Global boolean flag — set to True by the resize signal handler
 _resize_flag: bool = False
 
+
 # Type definitions for structured data
 class MazeData(TypedDict):
     """Structured data for rendering the maze."""
+
     grid: list[list[int]]
     entry: tuple[int, int]
     exit_: tuple[int, int]
     path: list[tuple[int, int]]
 
-def _getch() -> str:
-    """
-    Read a single character from standard input without
-    echoing it to the terminal.
 
-    This function uses the termios and tty modules to set the terminal
-    to raw mode, allowing it to read a single character without waiting
-    for a newline. It restores the original terminal settings afterward.
+def _getch() -> str:
+    """Read a single character from stdin without echoing.
+
+    Sets the terminal to raw mode to capture input immediately,
+    then restores the original settings before returning.
 
     Returns:
         str: The character read from standard input.
@@ -69,26 +69,29 @@ def _getch() -> str:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
     return ch
 
+
 def _on_resize(signum: int, frame: object) -> None:
-    """
-    Signal handler for terminal resize events (SIGWINCH).
-    """
+    """Handle SIGWINCH by setting the global resize flag."""
     global _resize_flag
     _resize_flag = True
 
+
 signal.signal(signal.SIGWINCH, _on_resize)
+
 
 def _directions_to_cells(
     start: tuple[int, int],
     directions: str
 ) -> list[tuple[int, int]]:
-    """
-    Convert a string of directions (e.g., "NENW") into a list 
-    of cell coordinates starting from the given start coordinate.
+    """Convert a direction string into a list of cell coordinates.
+
+    Args:
+        start (tuple[int, int]): Starting cell as (row, col).
+        directions (str): Sequence of cardinal letters, e.g. "NENW".
 
     Returns:
-    list[tuple[int, int]]: A list of cell coordinates 
-    corresponding to the path.
+        list[tuple[int, int]]: Ordered cell coordinates of the path,
+            including the start cell.
     """
     result: list[tuple[int, int]] = [start]
     current_row: int = start[0]
@@ -102,12 +105,20 @@ def _directions_to_cells(
         result.append((current_row, current_col))
     return result
 
+
 def parse_hex_file(filepath: str) -> MazeData:
-    """
-    Parse the maze data from a hex file.
-    Return:
-        MazeData: A structured dictionary containing the grid, entry,
-        exit, and path.
+    """Parse maze data from a hex file.
+
+    The file contains a grid of hex digits (one per cell) as the
+    first section, optionally followed by a blank line and metadata
+    lines: entry coordinates, exit coordinates, and a direction
+    string encoding the solution path.
+
+    Args:
+        filepath (str): Path to the hex maze file.
+
+    Returns:
+        MazeData: Structured dict with grid, entry, exit_, and path.
     """
     content: str = open(filepath).read()
 
@@ -135,7 +146,7 @@ def parse_hex_file(filepath: str) -> MazeData:
             cell_value: int = int(ch, 16)
             row.append(cell_value)
         grid.append(row)
-    
+
     entry: tuple[int, int] = (0, 0)
     exit_: tuple[int, int] = (0, 0)
     path: list[tuple[int, int]] = []
@@ -146,18 +157,18 @@ def parse_hex_file(filepath: str) -> MazeData:
         for ln in all_meta:
             if ln.strip():
                 meta_lines.append(ln.strip())
-    if len (meta_lines) >= 1:
+    if len(meta_lines) >= 1:
         parts: list[str] = meta_lines[0].split(",")
         col_str: str = parts[0]
         row_str: str = parts[1]
         entry = (int(row_str), int(col_str))
-    
+
     if len(meta_lines) >= 2:
         parts: list[str] = meta_lines[1].split(",")
         col_str: str = parts[0]
         row_str: str = parts[1]
         exit_ = (int(row_str), int(col_str))
-    
+
     if len(meta_lines) >= 3:
         directions_str: str = meta_lines[2].strip().upper()
         path = _directions_to_cells(entry, directions_str)
@@ -169,11 +180,10 @@ def parse_hex_file(filepath: str) -> MazeData:
         path=path
     )
 
+
 class Renderer:
-    """
-    Renderer class responsible
-    for rendering the maze and handling user input.
-    """
+    """Render a maze in the terminal and handle user input."""
+
     def __init__(
         self,
         grid: list[list[int]],
@@ -182,6 +192,16 @@ class Renderer:
         path: list[tuple[int, int]],
         on_regenerate: Callable[[], None],
     ) -> None:
+        """Initialise the renderer with maze data and callbacks.
+
+        Args:
+            grid (list[list[int]]): 2D wall bitmask grid.
+            entry (tuple[int, int]): Entry cell coordinates (row, col).
+            exit_ (tuple[int, int]): Exit cell coordinates (row, col).
+            path (list[tuple[int, int]]): Solution path as cell coords.
+            on_regenerate (Callable[[], None]): Called when the user
+                requests maze regeneration.
+        """
         self._grid: list[list[int]] = grid
         self._entry: tuple[int, int] = entry
         self._exit: tuple[int, int] = exit_
@@ -194,7 +214,7 @@ class Renderer:
         self._show_path: bool = False
         self._color_index: int = 0
         self._path_set: frozenset[tuple[int, int]] = frozenset(path)
-    
+
     @classmethod
     def from_cell_grid(
         cls,
@@ -203,6 +223,21 @@ class Renderer:
         exit_: tuple[int, int],
         on_regenerate: Callable[[], None],
     ) -> "Renderer":
+        """Create a Renderer from a grid of Cell objects.
+
+        Extracts the wall bitmask from each Cell and builds the
+        integer grid required by the constructor.
+
+        Args:
+            cells (list[list[int]]): 2D list of Cell objects.
+            entry (tuple[int, int]): Entry cell coordinates (row, col).
+            exit_ (tuple[int, int]): Exit cell coordinates (row, col).
+            on_regenerate (Callable[[], None]): Called when the user
+                requests maze regeneration.
+
+        Returns:
+            Renderer: A new Renderer instance.
+        """
         grid: list[list[int]] = []
 
         for row in cells:
@@ -218,14 +253,29 @@ class Renderer:
             path,
             on_regenerate
         )
-    
+
     def _current_wall_color(self) -> str:
+        """Return the ANSI color code for the active wall color.
+
+        Returns:
+            str: ANSI escape sequence for the current wall color.
+        """
         return WALL_COLORS[self._color_index]
 
     def _cycle_color(self) -> None:
+        """Advance the wall color index to the next available color."""
         self._color_index = (self._color_index + 1) % len(WALL_COLORS)
 
     def _build_char_grid(self) -> list[list[str]]:
+        """Build the character grid from maze wall bitmasks.
+
+        Each maze cell maps to a 2x2 block of characters. Corners
+        are always '┼'; horizontal and vertical wall segments are
+        drawn based on the N/S/E/W bitmask values.
+
+        Returns:
+            list[list[str]]: 2D character buffer of the maze outline.
+        """
         buf: list[list[str]] = []
 
         for _ in range(self._char_rows):
@@ -254,7 +304,7 @@ class Renderer:
                 buf[2*r + 1][2*self._cols] = "│"
             else:
                 buf[2*r + 1][2*self._cols] = " "
-        
+
         for c in range(self._cols):
             walls: int = self._grid[self._rows - 1][c]
             if walls & S_WALL:
@@ -265,6 +315,15 @@ class Renderer:
         return buf
 
     def _apply_overlays(self, buf: list[list[str]]) -> None:
+        """Overlay path markers, entry, and exit onto the char grid.
+
+        Solid cells (bitmask 0xF) are drawn as '█'. When path display
+        is enabled each path cell is marked '*'. Entry and exit cells
+        are always drawn as 'E' and 'X' respectively.
+
+        Args:
+            buf (list[list[str]]): Character buffer to modify in place.
+        """
         for r in range(self._rows):
             for c in range(self._cols):
                 if self._grid[r][c] == 0xF:
@@ -273,7 +332,7 @@ class Renderer:
         if self._show_path:
             for (r, c) in self.path:
                 buf[2*r + 1][2*c + 1] = "*"
-        
+
         er: int = self._entry[0]
         ec: int = self._entry[1]
         buf[2*er + 1][2*ec + 1] = "E"
@@ -283,16 +342,25 @@ class Renderer:
         buf[2*xr + 1][2*xc + 1] = "X"
 
     def _render(self) -> None:
+        """Draw the current maze state to the terminal.
+
+        Clears the screen, builds the character grid, applies
+        overlays, and writes each row with ANSI color codes. If the
+        terminal is too small to fit the maze, a warning is shown
+        instead.
+        """
         term_cols: int = os.get_terminal_size().columns
         term_rows: int = os.get_terminal_size().lines
 
         if term_rows < self._char_rows or term_cols < self._char_cols:
             sys.stdout.write("\033[2J\033[H")
-            sys.stdout.write(f"Terminal too small: need\
-        {self._char_cols}x{self._char_rows}\n")
+            sys.stdout.write(
+                f"Terminal too small: need"
+                f" {self._char_cols}x{self._char_rows}\n"
+            )
             sys.stdout.flush()
             return
-        
+
         buf: list[list[str]] = self._build_char_grid()
         self._apply_overlays(buf)
 
@@ -313,11 +381,24 @@ class Renderer:
                 else:
                     line += ch
             sys.stdout.write(line + "\n")
-        
-        sys.stdout.write(" [p] Toggle Path  [c] Color  [r] Regen  [q] Quit\n")
+
+        sys.stdout.write(
+            " [p] Toggle Path  [c] Color  [r] Regen  [q] Quit\n"
+        )
         sys.stdout.flush()
 
     def run(self) -> None:
+        """Run the interactive rendering loop.
+
+        Hides the cursor, renders the maze, then blocks on keystrokes:
+          p — toggle solution path overlay
+          c — cycle wall colour
+          r — call on_regenerate and exit the loop
+          q — quit without regenerating
+
+        SIGWINCH (terminal resize) triggers an immediate re-render.
+        The cursor is restored and repositioned when the loop exits.
+        """
         global _resize_flag
         sys.stdout.write("\033[?25l")
         sys.stdout.flush()
@@ -330,29 +411,30 @@ class Renderer:
                 if _resize_flag:
                     _resize_flag = False
                     self._render()
-                
+
                 key: str = _getch()
 
                 if key == "q":
                     break
-                
+
                 elif key == "p":
                     self._show_path = not self._show_path
                     self._render()
-                
+
                 elif key == "c":
                     self._cycle_color()
                     self._render()
-                
+
                 elif key == "r":
                     self._on_regenerate()
                     self._render()
                     break
-                
+
         finally:
             sys.stdout.write("\033[?25h")
             sys.stdout.write(f"\033[{self._char_rows + 3};1H")
             sys.stdout.flush()
+
 
 def launch(
     grid: list[list[int]],
@@ -361,6 +443,15 @@ def launch(
     path: list[tuple[int, int]],
     on_regenerate: Callable[[], None],
 ) -> None:
+    """Create a Renderer and start the interactive loop.
+
+    Args:
+        grid (list[list[int]]): 2D wall bitmask grid.
+        entry (tuple[int, int]): Entry cell coordinates (row, col).
+        exit_ (tuple[int, int]): Exit cell coordinates (row, col).
+        path (list[tuple[int, int]]): Solution path as cell coords.
+        on_regenerate (Callable[[], None]): Called on maze regeneration.
+    """
     renderer: Renderer = Renderer(
         grid,
         entry,
@@ -369,4 +460,3 @@ def launch(
         on_regenerate
     )
     renderer.run()
-
