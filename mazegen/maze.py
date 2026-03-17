@@ -1,34 +1,11 @@
 import sys
 import random
-#from mazegen.cell import Cell
 
-from typing import Final
-
-class Cell:
-    """Represents a maze cell with four walls.
-
-    Each wall is True if closed, False if open.
-    """
-    WALLMAP: Final = {
-        "N": 0b0001,
-        "E": 0b0010,
-        "S": 0b0100,
-        "W": 0b1000}
-    "Mapping of directions (NESW) to wall configurations in binary."
-
-    def __init__(self) -> None:
-        self.walls = 0b1111
-
-    def open_wall(self, direction: str) -> None:
-        "Open a wall in a direction, using one of N, E, S or W."
-        self.walls &= ~self.WALLMAP[direction.upper()]
-
-    def has_wall(self, direction: str) -> bool:
-        "Check if a wall exists in a direction, using one of N, E, S or W."
-        return bool(self.walls & self.WALLMAP[direction.upper()])
+from cell import Cell
 
 
 ALL_WALLS = 0b1111
+"""Bitmask representing a cell with all four walls closed."""
 
 DIRECTIONS = {
     "N": (0, -1),
@@ -36,6 +13,7 @@ DIRECTIONS = {
     "S": (0, 1),
     "W": (-1, 0),
 }
+"""Coordinate offsets for moving north, east, south, and west."""
 
 OPPOSITE = {
     "N": "S",
@@ -43,13 +21,30 @@ OPPOSITE = {
     "S": "N",
     "W": "E",
 }
+"""Opposite wall direction used when opening passages between cells."""
 
 class MazeError(Exception):
+    """Custom exception for maze-related errors."""
     pass
 
 
 class Maze:
-    """Maze structure and generation logic."""
+    """Represent a maze and provide generation utilities.
+
+    A maze is built as a 2D grid of Cell objects, where each cell stores
+    wall information using a 4-bit mask.
+
+    Attributes:
+        width: Number of columns in the maze.
+        height: Number of rows in the maze.
+        entry: Starting coordinate of the maze.
+        exit: Exit coordinate of the maze.
+        perfect: If True, generate a perfect maze (no loops).
+        seed: Random seed for reproducible generation.
+        logo: Coordinates reserved for the 42 logo.
+        grid: 2D list of Cell objects.
+    """
+
     def __init__(
             self,
             width: int = 15,
@@ -71,27 +66,28 @@ class Maze:
             for _ in range(self.height)
         ]
 
-        # Validate and correct arguments.
+        # Validate maze dimensions.
         if self.width <= 1:
             raise ValueError("Maze width invalid, must be more than 1")
         if self.height <= 1:
             raise ValueError("Maze height invalid, must be more than 1")
+        # Validate entry coordinate.
         x, y = self.entry
         if not 0 <= x < width or not 0 <= y < height:
             raise ValueError("Entry coordinates are out of bounds.")
-            # self.entry = (0, 0)
+        # Validate exit coordinate.
         x, y = self.exit
         if not 0 <= x < width or not 0 <= y < height:
             raise ValueError("Exit coordinates are out of bounds.")
-            # self.exit = (self.width - 1, self.height - 1)
+        # Entry and exit must be different.
         if self.entry == self.exit:
             raise ValueError("Entry and exit share coordinates.")
-            # self.entry = (0, 0)
-            # self.exit = (self.width - 1, self.height - 1)
+            
 
         self.generate()
 
     def __repr__(self) -> str:
+        """Return user-friendly maze representation."""
         return f"Maze({self.width=}, " \
                f"{self.height=}, " \
                f"{self.entry=}, " \
@@ -101,40 +97,43 @@ class Maze:
                 ")".replace("self.", "")
 
     def generate(self) -> None:
-        """Generate the maze layout."""
+        """Generate maze passages using depth-first search."""
         if self.seed:
             random.seed(self.seed)
 
-        # Close all cells.
+        # Reset every cell to fully closed.
         for row in self.grid:
             for cell in row:
                 cell.walls = ALL_WALLS
 
+        # DFS starts at entry.
         visited = {self.entry}
         stack = [self.entry]
 
         while stack:
             current = stack[-1]
             x, y = current
-            # Get unvisited neighbors
+            # Get unvisited neighbors not reserved by logo.
             unvisited = []
             for nx, ny in self._neighbors(x, y):
                 if (nx, ny) not in visited and (nx, ny) not in self.logo:
                     unvisited.append((nx, ny))
 
             if unvisited:
+                # Randomly extend maze path.
                 neighbor = random.choice(unvisited)
                 self._knock_down_wall(current, neighbor)
                 visited.add(neighbor)
                 stack.append(neighbor)
             else:
+                # Backtrack when no neighbors remain.
                 stack.pop()
 
         if not self.perfect:
             self._open_dead_ends()
 
     def _neighbors(self, x: int, y: int) -> list[tuple[int, int]]:
-        """Return valid neighbor coordinates."""
+        """Return neighboring coordinates inside maze bounds."""
         neighbors = []
 
         for dx, dy in DIRECTIONS.values():
@@ -166,7 +165,7 @@ class Maze:
                 return
 
     def _open_dead_ends(self) -> None:
-        """Make all eligible dead-ends into straight corridors."""
+        """Convert all eligible dead-ends into corridors."""
         # Which dead-end orientation corresponds to which direction.
         dead_end_targets = {
             0b1110: (0, +1), # north open → knock down south
@@ -190,10 +189,14 @@ class Maze:
                     self._knock_down_wall((x, y), (nx, ny))
 
     def _logo_cells(self) -> set[tuple[int, int]]:
-        """Return cells that form the '42' logo in the center of the maze."""
+        """Return coordinates reserved for the central '42' logo."""
         
         min_width = 9
         min_height = 7
+
+        #if self.width < min_width or self.height < min_height:
+            #raise ValueError("Maze too small for '42' logo .")
+
 
         if self.width < min_width or self.height < min_height:
             print(
@@ -236,6 +239,7 @@ class Maze:
         return logo_cells
 
     def print_hex(self):
+        """Print maze cells as hexadecimal wall values."""
         for row in self.grid:
             for cell in row:
                 print(format(cell.walls, "x"), end="")
@@ -243,4 +247,4 @@ class Maze:
 
 
 maze = Maze(width=20, height=20, entry=(0, 0), exit=(19, 19), perfect=True, seed=0)
-maze.print_hex()
+#maze.print_hex()
