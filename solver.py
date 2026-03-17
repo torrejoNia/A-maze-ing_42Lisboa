@@ -106,14 +106,14 @@ def solve_maze(maze: Maze) -> List[str]:
     # Reverse because we built path backwards
     path.reverse()
     
-    return path
+    return "".join(path)
 
 # Testing
 
 from mazegen.maze import Maze
 
-maze = Maze(width=15, height=15)
-
+maze = Maze(width=20, height=20, entry=(0, 0), exit=(19, 19), perfect=True, seed=0)
+maze.print_hex()
 path = solve_maze(maze)
 
 print(path)
