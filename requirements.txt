@@ -1,2 +1,2 @@
-mypy
-flake8
+flake8>=7.0.0
+mypy>=1.0.0

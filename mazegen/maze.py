@@ -1,7 +1,7 @@
 import sys
 import random
 
-from cell import Cell
+from .cell import Cell
 
 
 ALL_WALLS = 0b1111
@@ -22,6 +22,7 @@ OPPOSITE = {
     "W": "E",
 }
 """Opposite wall direction used when opening passages between cells."""
+
 
 class MazeError(Exception):
     """Custom exception for maze-related errors."""
@@ -82,7 +83,6 @@ class Maze:
         # Entry and exit must be different.
         if self.entry == self.exit:
             raise ValueError("Entry and exit share coordinates.")
-            
 
         self.generate()
 
@@ -94,7 +94,7 @@ class Maze:
                f"{self.exit=}, " \
                f"{self.perfect=}, " \
                f"{self.seed=}" \
-                ")".replace("self.", "")
+               ")".replace("self.", "")
 
     def generate(self) -> None:
         """Generate maze passages using depth-first search."""
@@ -168,10 +168,10 @@ class Maze:
         """Convert all eligible dead-ends into corridors."""
         # Which dead-end orientation corresponds to which direction.
         dead_end_targets = {
-            0b1110: (0, +1), # north open → knock down south
-            0b1101: (-1, 0), # east open → knock down west
-            0b1011: (0, -1), # south open → knock down north
-            0b0111: (+1, 0) # west open → knock down east
+            0b1110: (0, +1),   # north open → knock down south
+            0b1101: (-1, 0),   # east open → knock down west
+            0b1011: (0, -1),   # south open → knock down north
+            0b0111: (+1, 0),   # west open → knock down east
         }
 
         for y, row in enumerate(self.grid):
@@ -190,18 +190,14 @@ class Maze:
 
     def _logo_cells(self) -> set[tuple[int, int]]:
         """Return coordinates reserved for the central '42' logo."""
-        
         min_width = 9
         min_height = 7
-
-        #if self.width < min_width or self.height < min_height:
-            #raise ValueError("Maze too small for '42' logo .")
-
 
         if self.width < min_width or self.height < min_height:
             print(
                 f"Maze too small for '42' logo "
-                f"(minimum {min_width}x{min_height}, got {self.width}x{self.height})",
+                f"(minimum {min_width}x{min_height},"
+                f" got {self.width}x{self.height})",
                 file=sys.stderr,
             )
             return set()
@@ -238,7 +234,7 @@ class Maze:
 
         return logo_cells
 
-    def print_hex(self):
+    def print_hex(self) -> None:
         """Print maze cells as hexadecimal wall values."""
         for row in self.grid:
             for cell in row:
@@ -246,5 +242,10 @@ class Maze:
             print()
 
 
-maze = Maze(width=20, height=20, entry=(0, 0), exit=(19, 19), perfect=True, seed=0)
-#maze.print_hex()
+if __name__ == "__main__":
+    maze = Maze(
+        width=20, height=20,
+        entry=(0, 0), exit=(19, 19),
+        perfect=True, seed=0,
+    )
+    maze.print_hex()
