@@ -1,5 +1,5 @@
 # ASCII Renderer
-import os, sys, signal, tty, termios
+import os, sys, signal, tty, termios, select
 from typing import Callable, TypedDict
 
 # Wall bitmasks — match the bit positions in Cell.walls
@@ -211,7 +211,7 @@ class Renderer:
         self._cols: int = len(grid[0])
         self._char_rows: int = 2 * self._rows + 1
         self._char_cols: int = 2 * self._cols + 1
-        self._show_path: bool = False
+        self._path_step: int = 0
         self._color_index: int = 0
         self._path_set: frozenset[tuple[int, int]] = frozenset(path)
 
@@ -221,6 +221,7 @@ class Renderer:
         cells: list[list[int]],
         entry: tuple[int, int],
         exit_: tuple[int, int],
+        path: list[tuple[int, int]],
         on_regenerate: Callable[[], None],
     ) -> "Renderer":
         """Create a Renderer from a grid of Cell objects.
@@ -232,6 +233,7 @@ class Renderer:
             cells (list[list[int]]): 2D list of Cell objects.
             entry (tuple[int, int]): Entry cell coordinates (row, col).
             exit_ (tuple[int, int]): Exit cell coordinates (row, col).
+            path (list[tuple[int, int]]): Solution path as cell coords.
             on_regenerate (Callable[[], None]): Called when the user
                 requests maze regeneration.
 
@@ -329,8 +331,8 @@ class Renderer:
                 if self._grid[r][c] == 0xF:
                     buf[2*r + 1][2*c + 1] = "█"
 
-        if self._show_path:
-            for (r, c) in self.path:
+        if self._path_step > 0:
+            for (r, c) in self.path[:self._path_step]:
                 buf[2*r + 1][2*c + 1] = "*"
 
         er: int = self._entry[0]
@@ -342,6 +344,12 @@ class Renderer:
         xc: int = self._exit[1]
         if 0 <= xr < self._rows and 0 <= xc < self._cols:
             buf[2*xr + 1][2*xc + 1] = "X"
+
+    def _advance_animation(self) -> bool:
+        if self._path_step < len(self.path):
+            self._path_step += 1
+            return True
+        return False
 
     def _render(self) -> None:
         """Draw the current maze state to the terminal.
@@ -358,7 +366,7 @@ class Renderer:
             sys.stdout.write("\033[2J\033[H")
             sys.stdout.write(
                 f"Terminal too small: need"
-                f" {self._char_cols}x{self._char_rows}\n"
+                f" {self._char_cols}x{self._char_rows}\r\n"
             )
             sys.stdout.flush()
             return
@@ -382,10 +390,10 @@ class Renderer:
                     line += self._current_wall_color() + ch + RESET
                 else:
                     line += ch
-            sys.stdout.write(line + "\n")
+            sys.stdout.write(line + "\r\n")
 
         sys.stdout.write(
-            " [p] Toggle Path  [c] Color  [r] Regen  [q] Quit\n"
+            " [p] Toggle Path  [c] Color  [r] Regen  [q] Quit\r\n"
         )
         sys.stdout.flush()
 
@@ -402,9 +410,13 @@ class Renderer:
         The cursor is restored and repositioned when the loop exits.
         """
         global _resize_flag
-        sys.stdout.write("\033[?25l")
+        sys.stdout.write("\033[?1049h\033[?25l")
         sys.stdout.flush()
         signal.signal(signal.SIGWINCH, _on_resize)
+
+        fd: int = sys.stdin.fileno()
+        old_settings: list = termios.tcgetattr(fd)
+        tty.setraw(fd)
 
         self._render()
 
@@ -414,27 +426,36 @@ class Renderer:
                     _resize_flag = False
                     self._render()
 
-                key: str = _getch()
+                FRAME_DELAY: float = 0.07
 
-                if key == "q":
-                    break
+                if select.select([sys.stdin], [], [], FRAME_DELAY)[0]:
+                    key: str = sys.stdin.read(1)
 
-                elif key == "p":
-                    self._show_path = not self._show_path
-                    self._render()
+                    if key == "q":
+                        break
 
-                elif key == "c":
-                    self._cycle_color()
-                    self._render()
+                    elif key == "p":
+                        if self._path_step > 0:
+                            self._path_step = 0
+                        else:
+                            self._path_step = 1
+                        self._render()
 
-                elif key == "r":
-                    self._on_regenerate()
-                    self._render()
-                    break
+                    elif key == "c":
+                        self._cycle_color()
+                        self._render()
+
+                    elif key == "r":
+                        self._on_regenerate()
+                        break
+
+                else:
+                    if self._path_step > 0 and self._advance_animation():
+                        self._render()
 
         finally:
-            sys.stdout.write("\033[?25h")
-            sys.stdout.write(f"\033[{self._char_rows + 3};1H")
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            sys.stdout.write("\033[?25h\033[?1049l")
             sys.stdout.flush()
 
 
