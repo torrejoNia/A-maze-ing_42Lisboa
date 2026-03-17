@@ -335,11 +335,13 @@ class Renderer:
 
         er: int = self._entry[0]
         ec: int = self._entry[1]
-        buf[2*er + 1][2*ec + 1] = "E"
+        if 0 <= er < self._rows and 0 <= ec < self._cols:
+            buf[2*er + 1][2*ec + 1] = "E"
 
         xr: int = self._exit[0]
         xc: int = self._exit[1]
-        buf[2*xr + 1][2*xc + 1] = "X"
+        if 0 <= xr < self._rows and 0 <= xc < self._cols:
+            buf[2*xr + 1][2*xc + 1] = "X"
 
     def _render(self) -> None:
         """Draw the current maze state to the terminal.
@@ -460,3 +462,6 @@ def launch(
         on_regenerate
     )
     renderer.run()
+
+d = parse_hex_file('test_maze.txt')
+launch(d['grid'], d['entry'], d['exit_'], d['path'], lambda: None)
