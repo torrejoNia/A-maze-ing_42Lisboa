@@ -241,5 +241,6 @@ class Maze:
                 print(format(cell.walls, "x"), end="")
             print()
 
-maze = Maze()
+
+maze = Maze(width=20, height=20, entry=(0, 0), exit=(19, 19), perfect=True, seed=0)
 maze.print_hex()
