@@ -53,7 +53,8 @@ class Maze:
             entry: tuple[int, int] = (0, 0),
             exit: tuple[int, int] = (14, 14),
             perfect: bool = False,
-            seed: int = 0
+            seed: int = 0,
+            algorithm: str = "dfs"
             ) -> None:
         self.width = width
         self.height = height
@@ -66,6 +67,7 @@ class Maze:
             [Cell() for _ in range(self.width)]
             for _ in range(self.height)
         ]
+        self.algorithm = algorithm.lower()
 
         # Validate maze dimensions.
         if self.width <= 1:
@@ -83,6 +85,9 @@ class Maze:
         # Entry and exit must be different.
         if self.entry == self.exit:
             raise ValueError("Entry and exit share coordinates.")
+        if self.algorithm not in {"dfs", "prim"}:
+            raise ValueError("Unsupported algorithm")
+            
 
         self.generate()
 
@@ -94,17 +99,29 @@ class Maze:
                f"{self.exit=}, " \
                f"{self.perfect=}, " \
                f"{self.seed=}" \
-               ")".replace("self.", "")
+               f"{self.algorithm=}" \
+                ")".replace("self.", "")
 
     def generate(self) -> None:
-        """Generate maze passages using depth-first search."""
+        """Generate maze using selected algorithm."""
+
         if self.seed:
             random.seed(self.seed)
 
-        # Reset every cell to fully closed.
         for row in self.grid:
             for cell in row:
                 cell.walls = ALL_WALLS
+
+        if self.algorithm == "dfs":
+            self._generate_dfs()
+        elif self.algorithm == "prim":
+            self._generate_prim()
+
+        if not self.perfect:
+            self._open_dead_ends()
+
+    def _generate_dfs(self) -> None:
+        """Generate maze using depth-first search."""
 
         # DFS starts at entry.
         visited = {self.entry}
@@ -129,8 +146,44 @@ class Maze:
                 # Backtrack when no neighbors remain.
                 stack.pop()
 
-        if not self.perfect:
-            self._open_dead_ends()
+    def _generate_prim(self) -> None:
+        """Generate maze using randomized Prim's algorithm."""
+
+        # Start from the maze entry.
+        #'visited' stores cells already connected to the maze.
+        # 'frontier' stores candidate walls: 
+        # # each item is (visited_cell, unvisited_neighbor)
+        visited = {self.entry}
+        frontier = []
+
+        # Add all valid neighbors of the starting cell to frontier.
+        for neighbor in self._neighbors(*self.entry):
+            if neighbor not in self.logo:
+                frontier.append((self.entry, neighbor))
+
+        # Continue until there are no candidate walls left.
+        while frontier:
+            
+            # Pick a random frontier wall.
+            current, neighbor = random.choice(frontier)
+            
+            # Remove chosen wall from frontier so it is not reused.
+            frontier.remove((current, neighbor))
+
+            # Skip if neighbor is already connected.
+            if neighbor in visited:
+                continue
+
+            # Open passage between current maze cell and new neighbor.
+            self._knock_down_wall(current, neighbor)
+            
+            # Add new cell to visited maze area.
+            visited.add(neighbor)
+
+            # Add new frontier walls from this newly visited cell.
+            for next_neighbor in self._neighbors(*neighbor):
+                if next_neighbor not in visited and next_neighbor not in self.logo:
+                    frontier.append((neighbor, next_neighbor))
 
     def _neighbors(self, x: int, y: int) -> list[tuple[int, int]]:
         """Return neighboring coordinates inside maze bounds."""
@@ -194,13 +247,7 @@ class Maze:
         min_height = 7
 
         if self.width < min_width or self.height < min_height:
-            print(
-                f"Maze too small for '42' logo "
-                f"(minimum {min_width}x{min_height},"
-                f" got {self.width}x{self.height})",
-                file=sys.stderr,
-            )
-            return set()
+            raise ValueError("Maze must be at least 9x7 for '42' logo .")
 
         center_x = self.width // 2
         center_y = self.height // 2
@@ -247,5 +294,6 @@ if __name__ == "__main__":
         width=20, height=20,
         entry=(0, 0), exit=(19, 19),
         perfect=True, seed=0,
+        algorithm = "prim"
     )
     maze.print_hex()
