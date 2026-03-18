@@ -2,3 +2,9 @@ subject.pdf
 __pycache__/
 notes/
 venv/
+.mypy_cache/
+*.pyc
+dist/
+*.egg-info/
+build/
+maze.txt

@@ -1,5 +1,10 @@
 # ASCII Renderer
-import os, sys, signal, tty, termios, select
+import os
+import sys
+import signal
+import tty
+import termios
+import select
 from typing import Callable, TypedDict
 
 # Wall bitmasks — match the bit positions in Cell.walls
@@ -30,6 +35,11 @@ WALL_COLORS: list[str] = [
 ]
 
 # Direction → (row delta, col delta)
+# Frame delays for each animation phase (seconds)
+GEN_FRAME_DELAY: float = 0.01    # fast — 50 cells/sec
+PATH_FRAME_DELAY: float = 0.05   # slower — ~14 cells/sec
+
+# Direction → (row delta, col delta)
 DIR_DELTA: dict[str, tuple[int, int]] = {
     "N": (-1, 0),
     "E": (0, +1),
@@ -49,25 +59,6 @@ class MazeData(TypedDict):
     entry: tuple[int, int]
     exit_: tuple[int, int]
     path: list[tuple[int, int]]
-
-
-def _getch() -> str:
-    """Read a single character from stdin without echoing.
-
-    Sets the terminal to raw mode to capture input immediately,
-    then restores the original settings before returning.
-
-    Returns:
-        str: The character read from standard input.
-    """
-    fd: int = sys.stdin.fileno()
-    old_settings: list = termios.tcgetattr(fd)
-    try:
-        tty.setraw(fd)
-        ch: str = sys.stdin.read(1)
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-    return ch
 
 
 def _on_resize(signum: int, frame: object) -> None:
@@ -120,16 +111,19 @@ def parse_hex_file(filepath: str) -> MazeData:
     Returns:
         MazeData: Structured dict with grid, entry, exit_, and path.
     """
-    content: str = open(filepath).read()
+    with open(filepath) as f:
+        content: str = f.read()
 
     sections: list[str] = content.split("\n\n", 1)
 
+    part1: str
+    part2: str
     if len(sections) > 1:
-        part1: str = sections[0]
-        part2: str = sections[1]
+        part1 = sections[0]
+        part2 = sections[1]
     else:
-        part1: str = content
-        part2: str = ""
+        part1 = content
+        part2 = ""
 
     all_lines: list[str] = part1.splitlines()
     grid_lines: list[str] = []
@@ -150,13 +144,14 @@ def parse_hex_file(filepath: str) -> MazeData:
     entry: tuple[int, int] = (0, 0)
     exit_: tuple[int, int] = (0, 0)
     path: list[tuple[int, int]] = []
+    meta_lines: list[str] = []
 
     if part2:
         all_meta: list[str] = part2.splitlines()
-        meta_lines: list[str] = []
         for ln in all_meta:
             if ln.strip():
                 meta_lines.append(ln.strip())
+
     if len(meta_lines) >= 1:
         parts: list[str] = meta_lines[0].split(",")
         col_str: str = parts[0]
@@ -164,9 +159,9 @@ def parse_hex_file(filepath: str) -> MazeData:
         entry = (int(row_str), int(col_str))
 
     if len(meta_lines) >= 2:
-        parts: list[str] = meta_lines[1].split(",")
-        col_str: str = parts[0]
-        row_str: str = parts[1]
+        parts = meta_lines[1].split(",")
+        col_str = parts[0]
+        row_str = parts[1]
         exit_ = (int(row_str), int(col_str))
 
     if len(meta_lines) >= 3:
@@ -212,49 +207,9 @@ class Renderer:
         self._char_rows: int = 2 * self._rows + 1
         self._char_cols: int = 2 * self._cols + 1
         self._path_step: int = 0
+        self._gen_step: int = 0
         self._color_index: int = 0
         self._path_set: frozenset[tuple[int, int]] = frozenset(path)
-
-    @classmethod
-    def from_cell_grid(
-        cls,
-        cells: list[list[int]],
-        entry: tuple[int, int],
-        exit_: tuple[int, int],
-        path: list[tuple[int, int]],
-        on_regenerate: Callable[[], None],
-    ) -> "Renderer":
-        """Create a Renderer from a grid of Cell objects.
-
-        Extracts the wall bitmask from each Cell and builds the
-        integer grid required by the constructor.
-
-        Args:
-            cells (list[list[int]]): 2D list of Cell objects.
-            entry (tuple[int, int]): Entry cell coordinates (row, col).
-            exit_ (tuple[int, int]): Exit cell coordinates (row, col).
-            path (list[tuple[int, int]]): Solution path as cell coords.
-            on_regenerate (Callable[[], None]): Called when the user
-                requests maze regeneration.
-
-        Returns:
-            Renderer: A new Renderer instance.
-        """
-        grid: list[list[int]] = []
-
-        for row in cells:
-            new_row: list[int] = []
-            for cell in row:
-                new_row.append(cell.walls)
-            grid.append(new_row)
-
-        return Renderer(
-            grid,
-            entry,
-            exit_,
-            path,
-            on_regenerate
-        )
 
     def _current_wall_color(self) -> str:
         """Return the ANSI color code for the active wall color.
@@ -288,9 +243,13 @@ class Renderer:
             for c in range(self._cols + 1):
                 buf[2*r][2*c] = "┼"
 
+        walls: int = 0
         for r in range(self._rows):
             for c in range(self._cols):
-                walls: int = self._grid[r][c]
+                if r * self._cols + c >= self._gen_step:
+                    walls = 0xF
+                else:
+                    walls = self._grid[r][c]
 
                 if walls & N_WALL:
                     buf[2*r][2*c + 1] = "─"
@@ -301,14 +260,22 @@ class Renderer:
                 else:
                     buf[2*r + 1][2*c] = " "
 
-            walls: int = self._grid[r][self._cols - 1]
+            last_col_idx: int = self._cols - 1
+            if r * self._cols + last_col_idx >= self._gen_step:
+                walls = 0xF
+            else:
+                walls = self._grid[r][last_col_idx]
             if walls & E_WALL:
                 buf[2*r + 1][2*self._cols] = "│"
             else:
                 buf[2*r + 1][2*self._cols] = " "
 
         for c in range(self._cols):
-            walls: int = self._grid[self._rows - 1][c]
+            last_row_idx: int = self._rows - 1
+            if last_row_idx * self._cols + c >= self._gen_step:
+                walls = 0xF
+            else:
+                walls = self._grid[last_row_idx][c]
             if walls & S_WALL:
                 buf[2*self._rows][2*c + 1] = "─"
             else:
@@ -344,6 +311,23 @@ class Renderer:
         xc: int = self._exit[1]
         if 0 <= xr < self._rows and 0 <= xc < self._cols:
             buf[2*xr + 1][2*xc + 1] = "X"
+
+        for r in range(self._rows):
+            for c in range(self._cols):
+                if r * self._cols + c >= self._gen_step:
+                    buf[2*r + 1][2*c + 1] = "█"
+
+    def _advance_gen(self) -> bool:
+        """Reveal the next cell in the generation animation.
+
+        Returns:
+            bool: True if a cell was revealed, False if already done.
+        """
+        total: int = self._rows * self._cols
+        if self._gen_step < total:
+            self._gen_step += 1
+            return True
+        return False
 
     def _advance_animation(self) -> bool:
         if self._path_step < len(self.path):
@@ -415,8 +399,9 @@ class Renderer:
         signal.signal(signal.SIGWINCH, _on_resize)
 
         fd: int = sys.stdin.fileno()
-        old_settings: list = termios.tcgetattr(fd)
+        old_settings = termios.tcgetattr(fd)
         tty.setraw(fd)
+        termios.tcflush(fd, termios.TCIFLUSH)
 
         self._render()
 
@@ -426,10 +411,15 @@ class Renderer:
                     _resize_flag = False
                     self._render()
 
-                FRAME_DELAY: float = 0.07
+                total: int = self._rows * self._cols
+                FRAME_DELAY: float
+                if self._gen_step < total:
+                    FRAME_DELAY = GEN_FRAME_DELAY
+                else:
+                    FRAME_DELAY = PATH_FRAME_DELAY
 
                 if select.select([sys.stdin], [], [], FRAME_DELAY)[0]:
-                    key: str = sys.stdin.read(1)
+                    key: str = os.read(fd, 1).decode('utf-8', errors='replace')
 
                     if key == "q":
                         break
@@ -450,7 +440,9 @@ class Renderer:
                         break
 
                 else:
-                    if self._path_step > 0 and self._advance_animation():
+                    if self._advance_gen():
+                        self._render()
+                    elif self._path_step > 0 and self._advance_animation():
                         self._render()
 
         finally:
@@ -484,5 +476,7 @@ def launch(
     )
     renderer.run()
 
-d = parse_hex_file('test_maze.txt')
-launch(d['grid'], d['entry'], d['exit_'], d['path'], lambda: None)
+
+if __name__ == "__main__":
+    d = parse_hex_file('test_maze.txt')
+    launch(d['grid'], d['entry'], d['exit_'], d['path'], lambda: None)
