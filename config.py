@@ -20,6 +20,8 @@ class ConfigData(TypedDict):
     output_file: str
     perfect: bool
     seed: int | None
+    logo: list[str] | None
+    algorithm: str
 
 
 def _parse_raw(filepath: str) -> dict[str, str]:
@@ -108,6 +110,56 @@ def _parse_coord(value: str, key: str) -> tuple[int, int]:
     return (y, x)
 
 
+def _parse_logo(filepath: str) -> list[str]:
+    """Read a logo file and return its pattern rows.
+
+    Each non-blank, non-comment line must contain only 'X' and '.'
+    characters and all rows must share the same length.
+
+    Args:
+        filepath (str): Path to the logo pattern file.
+
+    Returns:
+        list[str]: Non-empty list of equal-length rows.
+
+    Raises:
+        ValueError: If the file is missing, empty, contains invalid
+            characters, or has inconsistent row widths.
+    """
+    try:
+        f = open(filepath)
+    except FileNotFoundError:
+        raise ValueError(f"LOGO file not found: {filepath}")
+
+    rows: list[str] = []
+    with f:
+        for line in f:
+            line = line.rstrip("\n")
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            invalid = set(stripped) - {"X", "."}
+            if invalid:
+                raise ValueError(
+                    f"LOGO file '{filepath}': invalid characters"
+                    f" {invalid!r} — only 'X' and '.' are allowed"
+                )
+            rows.append(stripped)
+
+    if not rows:
+        raise ValueError(f"LOGO file '{filepath}' contains no pattern rows")
+
+    row_len = len(rows[0])
+    for i, row in enumerate(rows[1:], start=2):
+        if len(row) != row_len:
+            raise ValueError(
+                f"LOGO file '{filepath}': row {i} has width {len(row)},"
+                f" expected {row_len}"
+            )
+
+    return rows
+
+
 def _validate(raw: dict[str, str]) -> ConfigData:
     """Validate raw config strings and return a typed ConfigData.
 
@@ -185,6 +237,16 @@ def _validate(raw: dict[str, str]) -> ConfigData:
                 f"SEED must be an integer, got '{raw['SEED']}'"
             )
 
+    logo: list[str] | None = None
+    if "LOGO" in raw:
+        logo = _parse_logo(raw["LOGO"])
+
+    algorithm: str = raw.get("ALGORITHM", "dfs").lower()
+    if algorithm not in {"dfs", "prim"}:
+        raise ValueError(
+            f"ALGORITHM must be 'dfs' or 'prim', got '{raw['ALGORITHM']}'"
+        )
+
     return ConfigData(
         width=width,
         height=height,
@@ -193,6 +255,8 @@ def _validate(raw: dict[str, str]) -> ConfigData:
         output_file=output_file,
         perfect=perfect,
         seed=seed,
+        logo=logo,
+        algorithm=algorithm,
     )
 
 

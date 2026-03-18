@@ -112,7 +112,6 @@ def solve_maze(maze: Maze) -> str:
 
 
 if __name__ == "__main__":
-    from mazegen.maze import Maze
 
     maze = Maze(
         width=20,

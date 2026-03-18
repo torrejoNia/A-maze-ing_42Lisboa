@@ -1,4 +1,4 @@
-import sys
+# import sys
 import random
 
 from .cell import Cell
@@ -54,7 +54,8 @@ class Maze:
             exit: tuple[int, int] = (14, 14),
             perfect: bool = False,
             seed: int = 0,
-            algorithm: str = "dfs"
+            algorithm: str = "dfs",
+            logo_pattern: list[str] | None = None,
             ) -> None:
         self.width = width
         self.height = height
@@ -62,7 +63,7 @@ class Maze:
         self.exit = exit
         self.perfect = perfect
         self.seed = seed
-        self.logo = self._logo_cells()
+        self.logo = self._logo_cells(logo_pattern)
         self.grid = [
             [Cell() for _ in range(self.width)]
             for _ in range(self.height)
@@ -87,7 +88,6 @@ class Maze:
             raise ValueError("Entry and exit share coordinates.")
         if self.algorithm not in {"dfs", "prim"}:
             raise ValueError("Unsupported algorithm")
-            
 
         self.generate()
 
@@ -100,7 +100,7 @@ class Maze:
                f"{self.perfect=}, " \
                f"{self.seed=}" \
                f"{self.algorithm=}" \
-                ")".replace("self.", "")
+            ")".replace("self.", "")
 
     def generate(self) -> None:
         """Generate maze using selected algorithm."""
@@ -150,8 +150,8 @@ class Maze:
         """Generate maze using randomized Prim's algorithm."""
 
         # Start from the maze entry.
-        #'visited' stores cells already connected to the maze.
-        # 'frontier' stores candidate walls: 
+        # 'visited' stores cells already connected to the maze.
+        # 'frontier' stores candidate walls:
         # # each item is (visited_cell, unvisited_neighbor)
         visited = {self.entry}
         frontier = []
@@ -163,10 +163,10 @@ class Maze:
 
         # Continue until there are no candidate walls left.
         while frontier:
-            
+
             # Pick a random frontier wall.
             current, neighbor = random.choice(frontier)
-            
+
             # Remove chosen wall from frontier so it is not reused.
             frontier.remove((current, neighbor))
 
@@ -176,13 +176,14 @@ class Maze:
 
             # Open passage between current maze cell and new neighbor.
             self._knock_down_wall(current, neighbor)
-            
+
             # Add new cell to visited maze area.
             visited.add(neighbor)
 
             # Add new frontier walls from this newly visited cell.
             for next_neighbor in self._neighbors(*neighbor):
-                if next_neighbor not in visited and next_neighbor not in self.logo:
+                if next_neighbor not in visited \
+                        and next_neighbor not in self.logo:
                     frontier.append((neighbor, next_neighbor))
 
     def _neighbors(self, x: int, y: int) -> list[tuple[int, int]]:
@@ -241,45 +242,45 @@ class Maze:
                         and (nx, ny) not in self.logo:
                     self._knock_down_wall((x, y), (nx, ny))
 
-    def _logo_cells(self) -> set[tuple[int, int]]:
-        """Return coordinates reserved for the central '42' logo."""
-        min_width = 9
-        min_height = 7
+    def _logo_cells(
+            self,
+            pattern: list[str] | None = None,
+            ) -> set[tuple[int, int]]:
+        """Return coordinates reserved for the logo.
 
-        if self.width < min_width or self.height < min_height:
-            raise ValueError("Maze must be at least 9x7 for '42' logo .")
+        Uses the provided pattern if given, otherwise defaults to the
+        built-in '42' pixel art.
+        """
+        if pattern is None:
+            pattern = [
+                "X.X.XXX",
+                "X.X...X",
+                "XXX.XXX",
+                "..X.X..",
+                "..X.XXX",
+            ]
 
-        center_x = self.width // 2
-        center_y = self.height // 2
+        pattern_w = len(pattern[0])
+        pattern_h = len(pattern)
 
-        # Pixel art pattern for "42" (relative offsets from center-left)
-        # Each tuple is (col_offset, row_offset) from anchor point
-        four = [
-            (0, 0), (0, 1), (0, 2),          # left vertical
-                    (1, 2), (2, 2),          # horizontal bar
-                    (2, 0), (2, 1), (2, 3), (2, 4)  # right vertical
-        ]
-        two = [
-            (4, 0), (5, 0), (6, 0),          # top bar
-                            (6, 1),          # top-right
-            (4, 2), (5, 2), (6, 2),          # middle bar
-            (4, 3),                          # bottom-left
-            (4, 4), (5, 4), (6, 4),          # bottom bar
-        ]
+        if self.width < pattern_w + 2 or self.height < pattern_h + 2:
+            raise ValueError(
+                f"Maze ({self.width}x{self.height}) is too small"
+                f" for the logo ({pattern_w}x{pattern_h});"
+                f" need at least {pattern_w + 2}x{pattern_h + 2}."
+            )
 
-        anchor_x = center_x - 3
-        anchor_y = center_y - 2
+        anchor_x = self.width // 2 - pattern_w // 2
+        anchor_y = self.height // 2 - pattern_h // 2
 
-        logo_cells = set()
-
-        for dx, dy in four + two:
-            x = anchor_x + dx
-            y = anchor_y + dy
-
-            if 0 <= x < self.width and 0 <= y < self.height:
-                logo_cells.add((x, y))
-
-        return logo_cells
+        return {
+            (anchor_x + dx, anchor_y + dy)
+            for dy, row in enumerate(pattern)
+            for dx, cell in enumerate(row)
+            if cell == "X"
+            if 0 <= anchor_x + dx < self.width
+            if 0 <= anchor_y + dy < self.height
+        }
 
     def print_hex(self) -> None:
         """Print maze cells as hexadecimal wall values."""
@@ -291,9 +292,12 @@ class Maze:
 
 if __name__ == "__main__":
     maze = Maze(
-        width=20, height=20,
-        entry=(0, 0), exit=(19, 19),
-        perfect=True, seed=0,
-        algorithm = "prim"
+        width=20,
+        height=20,
+        entry=(0, 0),
+        exit=(19, 19),
+        perfect=True,
+        seed=0,
+        algorithm="prim",
     )
     maze.print_hex()

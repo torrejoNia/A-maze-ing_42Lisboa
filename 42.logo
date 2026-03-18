@@ -1,0 +1,10 @@
+# Pixel art for "42"
+# Use 'X' for filled cells and '.' for empty cells.
+# All rows must be the same width.
+# Fully enclosed sections will become solid chunks.
+X.X.XXX
+X.X...X
+XXX.XXX
+..X.X..
+..X.XXX
+
