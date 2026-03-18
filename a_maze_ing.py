@@ -52,6 +52,8 @@ def _dispatch(filepath: str) -> None:
         exit=maze_exit,
         perfect=config['perfect'],
         seed=config['seed'] if config['seed'] is not None else 0,
+        algorithm=config['algorithm'],
+        logo_pattern=config['logo'],
     )
 
     path_str: str = solve_maze(maze)

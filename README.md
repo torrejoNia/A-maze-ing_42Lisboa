@@ -5,15 +5,15 @@
 ## Description
 
 A-Maze-ing is a terminal-based maze generator and solver. Given a configuration
-file, the program generates a 2D maze using a randomised depth-first search
-algorithm, solves it with breadth-first search, writes the result to an output
-file, and renders everything in an interactive ASCII TUI with step-by-step
-animations for both generation and path discovery.
+file, the program generates a 2D maze, solves it with breadth-first search,
+writes the result to an output file, and renders everything in an interactive
+ASCII TUI with step-by-step animations for both generation and path discovery.
 
 Key features:
+- Choice of generation algorithm: randomised DFS or Prim's, controlled via config
 - Perfect (no loops) or imperfect maze generation, controlled via config
 - Optional seed for reproducible mazes
-- "42" logo embedded as reserved cells in the centre of every maze
+- Custom pixel-art logo embedded as reserved cells in the centre of every maze
 - Cell-by-cell generation animation in the terminal
 - Toggleable animated path overlay (`p`)
 - Cyclic wall colour themes (`c`)
@@ -78,15 +78,17 @@ python -m build --outdir .
 The config file uses a simple `KEY=VALUE` format — one key per line. Blank
 lines and lines starting with `#` are ignored.
 
-| Key           | Type    | Required | Description                                        |
-|---------------|---------|----------|----------------------------------------------------|
-| `WIDTH`       | int     | yes      | Number of columns in the maze (must be ≥ 2)        |
-| `HEIGHT`      | int     | yes      | Number of rows in the maze (must be ≥ 2)           |
-| `ENTRY`       | `x,y`   | yes      | Entry cell in **col,row** order (0-indexed)        |
-| `EXIT`        | `x,y`   | yes      | Exit cell in **col,row** order (0-indexed)         |
-| `OUTPUT_FILE` | string  | yes      | Path where the maze file will be written           |
-| `PERFECT`     | bool    | yes      | `True` for perfect maze, `False` for imperfect     |
-| `SEED`        | int     | no       | RNG seed for reproducible generation               |
+| Key           | Type    | Required | Description                                                    |
+|---------------|---------|----------|----------------------------------------------------------------|
+| `WIDTH`       | int     | yes      | Number of columns in the maze (must be ≥ 2)                   |
+| `HEIGHT`      | int     | yes      | Number of rows in the maze (must be ≥ 2)                      |
+| `ENTRY`       | `x,y`   | yes      | Entry cell in **col,row** order (0-indexed)                   |
+| `EXIT`        | `x,y`   | yes      | Exit cell in **col,row** order (0-indexed)                    |
+| `OUTPUT_FILE` | string  | yes      | Path where the maze file will be written                      |
+| `PERFECT`     | bool    | yes      | `True` for perfect maze, `False` for imperfect                |
+| `SEED`        | int     | no       | RNG seed for reproducible generation                          |
+| `ALGORITHM`   | string  | no       | Generation algorithm: `dfs` (default) or `prim`               |
+| `LOGO`        | string  | no       | Path to a logo pattern file (see [Logo](#logo) below)         |
 
 Example `config.txt`:
 
@@ -98,6 +100,8 @@ EXIT=19,19
 OUTPUT_FILE=maze.txt
 PERFECT=True
 SEED=42
+ALGORITHM=prim
+LOGO=42.logo
 ```
 
 Coordinates follow the file convention `col,row` (i.e. x,y). The program
@@ -105,34 +109,65 @@ converts them internally to `(row, col)` for grid indexing.
 
 ---
 
-## Maze Generation Algorithm
+## Maze Generation Algorithms
 
-The maze is generated using **randomised depth-first search** (recursive
-backtracker).
+Two algorithms are available, selected via the `ALGORITHM` config key.
 
-### How it works
+### DFS — randomised depth-first search (default)
 
 1. All cells start with every wall closed (bitmask `0b1111`).
 2. Start a stack at the entry cell, mark it visited.
 3. While the stack is non-empty:
-   - Look at all unvisited, in-bounds neighbours that are not reserved for
-     the "42" logo.
+   - Look at all unvisited, in-bounds neighbours not reserved for the logo.
    - If any exist, pick one at random, remove the shared wall, push the
      neighbour onto the stack, mark it visited.
    - Otherwise backtrack (pop the stack).
 4. For *imperfect* mazes, a second pass opens every dead-end into a corridor,
    creating extra loops.
 
-### Why DFS?
+**Character:** long winding corridors, sparse dead ends, river-like paths.
 
-DFS was chosen because:
-- It naturally produces **long winding corridors** with few branches, giving
-  visually interesting mazes without post-processing.
-- It is simple to implement correctly and easy to audit.
-- The stack-based iterative form avoids Python's recursion limit for large
-  grids.
-- It supports a seed trivially — a single `random.seed(seed)` call makes the
-  entire generation deterministic and reproducible.
+### Prim's — randomised Prim's algorithm
+
+1. Start with the entry cell in the visited set and add its neighbours to a
+   frontier list.
+2. While the frontier is non-empty:
+   - Pick a random frontier edge (visited cell → unvisited neighbour).
+   - If the neighbour is already visited, discard the edge.
+   - Otherwise open the wall between them, add the neighbour to visited, and
+     add its unvisited neighbours to the frontier.
+
+**Character:** bushy, many short dead ends radiating outward — structurally
+opposite to DFS.
+
+---
+
+## Logo
+
+A pixel-art logo is reserved as a solid block of cells in the centre of every
+maze. By default this is the built-in `42` pattern. You can replace it with any
+design by pointing `LOGO` at a plain-text file.
+
+### Logo file format
+
+- Each non-blank, non-comment line is one row of the pattern.
+- `X` = filled cell (wall kept closed, unreachable by the solver).
+- `.` = empty cell (treated as normal maze).
+- All rows must have the same width.
+- Lines starting with `#` and blank lines are ignored.
+
+```
+# my-logo.logo
+X.X.XXX
+X.X...X
+XXX.XXX
+..X.X..
+..X.XXX
+```
+
+The logo is automatically centred in the maze. The maze must be at least
+`logo_width + 2` columns wide and `logo_height + 2` rows tall; a clear error
+is raised otherwise.
 
 ---
 
@@ -173,12 +208,20 @@ maze.print_hex()
 from mazegen import Maze
 
 maze = Maze(
-    width=20,        # number of columns
-    height=20,       # number of rows
-    entry=(0, 0),    # entry as (x, y) = (col, row)
-    exit=(19, 19),   # exit  as (x, y) = (col, row)
-    perfect=True,    # True → no loops; False → dead-ends opened
-    seed=42,         # omit or pass 0 for a random maze
+    width=20,           # number of columns
+    height=20,          # number of rows
+    entry=(0, 0),       # entry as (x, y) = (col, row)
+    exit=(19, 19),      # exit  as (x, y) = (col, row)
+    perfect=True,       # True → no loops; False → dead-ends opened
+    seed=42,            # omit or pass 0 for a random maze
+    algorithm="prim",   # "dfs" (default) or "prim"
+    logo_pattern=[      # custom pixel-art logo; omit for built-in "42"
+        "X.X.XXX",
+        "X.X...X",
+        "XXX.XXX",
+        "..X.X..",
+        "..X.XXX",
+    ],
 )
 ```
 
@@ -224,7 +267,7 @@ print(len(path))    # number of steps
 ### Regenerating a maze in-place
 
 ```python
-maze.generate()   # re-runs DFS with the same (or new random) seed
+maze.generate()   # re-runs the selected algorithm with the same (or new random) seed
 ```
 
 ---
