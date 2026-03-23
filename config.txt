@@ -6,5 +6,5 @@ OUTPUT_FILE=maze.txt
 PERFECT=True
 LOGO=42.logo
 # Available algorithms -> dfs | prim
-ALGORITHM=prim
-SEED=42
+ALGORITHM=dfs
+SEED=0

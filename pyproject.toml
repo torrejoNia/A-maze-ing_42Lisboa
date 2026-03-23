@@ -10,7 +10,7 @@ authors = [
     {name = "esnavarr, mju-ferr"}
 ]
 requires-python = ">=3.10"
-readme = "README.md"
+readme = "mazegen/README.md"
 license = "MIT"
 
 [tool.setuptools.packages.find]
