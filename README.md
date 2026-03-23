@@ -31,6 +31,18 @@ Key features:
 
 ### Installation
 
+Create a virtual environment in the same folder where you cloned the repository:
+
+```bash
+python3 -m venv venv
+```
+Activate virtual environment
+
+```bash
+source venv/bin/activate
+```
+Install the package requirements
+
 ```bash
 # Clone the repo, then inside the project root:
 make install
@@ -69,6 +81,12 @@ make clean        # removes __pycache__, .mypy_cache, *.pyc, dist/
 pip install build
 python -m build --outdir .
 # Produces mazegen-1.0.0-py3-none-any.whl and mazegen-1.0.0.tar.gz
+```
+
+### Exit venv when done
+
+```bash
+deactivate
 ```
 
 ---
@@ -179,12 +197,14 @@ the `mazegen/` directory. It is distributed as a pip-installable wheel.
 ### Installation
 
 ```bash
+# In a clean virtualenv:
 pip install mazegen-1.0.0-py3-none-any.whl
 ```
 
 Or from source:
 
 ```bash
+# In a clean virtualenv:
 pip install build
 python -m build --outdir .
 pip install mazegen-1.0.0-py3-none-any.whl
